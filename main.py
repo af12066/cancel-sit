@@ -5,19 +5,54 @@ import urllib.request
 import re
 import urllib.parse
 from bs4 import BeautifulSoup
+from slacker import Slacker
 
-uri = 'http://attend.sic.shibaura-it.ac.jp/cancelCalendar/t04/calendar201512-01.html'
+class Slack(object):
+    __slacker = None
 
-html = urllib.request.urlopen(uri)
-soup = BeautifulSoup(html, 'lxml')
+    def __init__(self, token):
+        self.__slacker = Slacker(token)
 
-link = soup.find_all('a', href=re.compile("/cancel/")) #href属性に'/cancel/'を含むa要素を取得し，相対パスを絶対パスに変換
+    def get_channnel_list(self):
+        """
+        Slackチーム内のチャンネルID、チャンネル名一覧を取得する。
+        """
 
-for a in link:
-    path = urllib.parse.urljoin(uri, a['href']) #href属性のみを取得
-    print(path)
+        # bodyで取得することで、[{チャンネル1},{チャンネル2},...,]の形式で取得できる。
+        raw_data = self.__slacker.channels.list().body
 
-    html2 = urllib.request.urlopen(path) #リストの要素のURLをオープン
-    soup2 = BeautifulSoup(html2, 'lxml')
-    dat = soup2.find_all(text=True) #テキストをすべて取得
-    print([x for x in dat if x != '\n']) #改行文字のみのリスト項目を削除
+        result = []
+        for data in raw_data["channels"]:
+            result.append(dict(channel_id=data["id"], channel_name=data["name"]))
+
+        return result
+
+    def post_message_to_channel(self, channel, message):
+        """
+        Slackチームの任意のチャンネルにメッセージを投稿する。
+        """
+
+        channel_name = "#" + channel
+        self.__slacker.chat.post_message(channel_name, message)
+
+if __name__ == '__main__':
+    slack = Slack('...')
+
+    print(slack.get_channnel_list())
+    #slack.post_message_to_channel("class", "テストです")
+    uri = 'http://attend.sic.shibaura-it.ac.jp/cancelCalendar/t04/calendar2015{0:02d}-{1:02d}.html'.format(9, 10)
+
+    html = urllib.request.urlopen(uri)
+    soup = BeautifulSoup(html, 'lxml')
+
+    link = soup.find_all('a', href=re.compile("/cancel/")) #href属性に'/cancel/'を含むa要素を取得し，相対パスを絶対パスに変換
+
+    for a in link:
+        path = urllib.parse.urljoin(uri, a['href']) #href属性のみを取得
+        print(path)
+
+        html2 = urllib.request.urlopen(path) #リストの要素のURLをオープン
+        soup2 = BeautifulSoup(html2, 'lxml')
+        dat = soup2.find_all(text=True) #テキストをすべて取得
+        settext = "\n".join([x for x in dat if x != '\n']) #改行文字のみのリスト項目を削除．リストを結合し，文字列を整形
+        slack.post_message_to_channel("class", settext) #Slackにポスト (チャンネル, テキスト)
